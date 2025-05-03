@@ -152,9 +152,10 @@ def login():
             print("User not found")  # Debug 4
             return jsonify({"error": "Invalid credentials"}), 401
 
-        if not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
+        if not bcrypt.checkpw(data['password'].encode(), user['password'].strip().encode()):
             print("Password mismatch")  # Debug 5
             return jsonify({"error": "Invalid credentials"}), 401
+
 
         access_token = create_access_token(identity={
             'id': user['id'],
