@@ -1,19 +1,26 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { CircularProgress, Box } from '@mui/material';
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, loading } = useAuth();
+  const { authState } = useAuth();
+  const location = useLocation();
 
-  if (loading) {
-    return <div>Loading...</div>; // Or your custom loading component
+  if (authState.isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  if (!authState.isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.isAdmin ? 'admin' : 'user')) {
+  const userRole = authState.isAdmin ? 'admin' : 'user';
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
     return <Navigate to="/" replace />;
   }
 

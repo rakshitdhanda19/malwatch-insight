@@ -2,14 +2,22 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { Box, TextField, Button, Typography, Alert, CircularProgress } from '@mui/material';
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Alert,
+  CircularProgress,
+  Link
+} from '@mui/material';
 
 function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setAuthState } = useAuth(); // Changed from login to setAuthState
+  const { setAuthState } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -28,12 +36,16 @@ function Login() {
       });
 
       localStorage.setItem('token', response.data.access_token);
+
+      // ✅ Correctly update auth state including isLoading
       setAuthState({
         isAuthenticated: true,
         isAdmin: response.data.is_admin,
-        username: response.data.username
+        username: response.data.username,
+        isLoading: false // Important to avoid stuck loading
       });
 
+      // ✅ Navigate based on role
       navigate(response.data.is_admin ? '/admin' : '/');
     } catch (error) {
       console.error('Login error:', error);
@@ -112,6 +124,13 @@ function Login() {
         >
           {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}
         </Button>
+
+        <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+          Don't have an account?{' '}
+          <Link href="/register" underline="hover" sx={{ cursor: 'pointer' }}>
+            Register
+          </Link>
+        </Typography>
       </Box>
     </Box>
   );
