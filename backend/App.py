@@ -33,6 +33,7 @@ CORS(app, resources={
 # Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB limit
 app.config['ALLOWED_EXTENSIONS'] = {'exe', 'dll', 'pdf', 'docx', 'zip'}
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour expiration
 # Add these configurations right after app creation
@@ -40,9 +41,9 @@ app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
 # app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
-app.config['JWT_ERROR_MESSAGE_KEY'] = 'error'
 app.config['JWT_IDENTITY_CLAIM'] = 'sub'  # Explicitly set identity claim
 app.config['JWT_SUBJECT_CLAIM'] = 'sub'   # Ensure subject claim is used
+app.config['JWT_ERROR_MESSAGE_KEY'] = 'error'
 jwt = JWTManager(app)
 
 # Database configuration
@@ -146,6 +147,7 @@ def register():
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
+
 @app.route('/login', methods=['POST'])
 def login():
     try:
@@ -158,15 +160,11 @@ def login():
         if not user or not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
             return jsonify({"error": "Invalid credentials"}), 401
 
-        # Create token with proper identity claims
+        # Create token with string user ID as subject
         access_token = create_access_token(
-            identity={
-                'sub': str(user['id']),  # Ensure subject is a string
-                'username': user['username'],
-                'is_admin': bool(user['is_admin'])
-            },
+            identity=str(user['id']),  # Simple string user ID
             additional_claims={
-                'user_id': str(user['id']),  # String conversion
+                'username': user['username'],
                 'is_admin': bool(user['is_admin'])
             }
         )
@@ -176,13 +174,49 @@ def login():
             "isAdmin": bool(user['is_admin']),
             "username": user['username']
         })
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         if conn.is_connected():
             cursor.close()
-            conn.close()         
+            conn.close()
+# @app.route('/login', methods=['POST'])
+# def login():
+#     try:
+#         data = request.get_json()
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+#         cursor.execute("SELECT * FROM users WHERE username = %s", (data['username'],))
+#         user = cursor.fetchone()
+
+#         if not user or not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
+#             return jsonify({"error": "Invalid credentials"}), 401
+
+#         # Create token with proper identity claims
+#         access_token = create_access_token(
+#             identity={
+#                 'sub': str(user['id']),  # Ensure subject is a string
+#                 'username': user['username'],
+#                 'is_admin': bool(user['is_admin'])
+#             },
+#             additional_claims={
+#                 'user_id': str(user['id']),  # String conversion
+#                 'is_admin': bool(user['is_admin'])
+#             }
+#         )
+
+#         return jsonify({
+#             "access_token": access_token,
+#             "isAdmin": bool(user['is_admin']),
+#             "username": user['username']
+#         })
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         if conn.is_connected():
+#             cursor.close()
+#             conn.close()         
 # @app.route('/login', methods=['POST'])
 # def login():
 #     data = request.get_json()
@@ -551,99 +585,172 @@ def delete_user(user_id):
 #         if conn.is_connected():
 #             cursor.close()
 #             conn.close()                     
-
+# @app.route('/upload', methods=['POST'])
+# @jwt_required()
+# def upload_file():
+#     if 'file' not in request.files:
+#         return jsonify({"error": "No file part"}), 400
+    
+#     file = request.files['file']
+#     if file.filename == '':
+#         return jsonify({"error": "No selected file"}), 400
+    
+#     try:
+#         # Save file and process scan
+#         filename = secure_filename(file.filename)
+#         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+#         file.save(filepath)
+        
+#         # Get current user
+#         user_id = get_jwt_identity()
+        
+#         # Process scan (your malware detection logic)
+#         is_malicious, confidence = process_file(filepath)  # Implement this
+        
+#         # Save to database
+#         cursor = conn.cursor()
+#         cursor.execute("""
+#             INSERT INTO scans 
+#             (user_id, filename, file_path, is_malicious, confidence)
+#             VALUES (%s, %s, %s, %s, %s)
+#             RETURNING id
+#         """, (user_id, filename, filepath, is_malicious, confidence))
+#         scan_id = cursor.fetchone()['id']
+#         conn.commit()
+        
+#         return jsonify({
+#             "message": "File scanned successfully",
+#             "scan_id": scan_id,
+#             "is_malicious": is_malicious,
+#             "confidence": confidence
+#         })
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
 @app.route('/upload', methods=['POST'])
 @jwt_required()
 def upload_file():
+    # First check if the file exists in the request
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({"error": "No file part in the request"}), 400
     
     file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
     
-    if not allowed_file(file.filename):
+    # Check if a file was actually selected
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    # Verify allowed file types
+    allowed_extensions = {'exe', 'dll', 'pdf', 'docx', 'zip'}
+    if '.' not in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
         return jsonify({"error": "Invalid file type"}), 400
     
     try:
+        # Secure the filename and prepare upload
         filename = secure_filename(file.filename)
-        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        upload_folder = app.config['UPLOAD_FOLDER']
+        os.makedirs(upload_folder, exist_ok=True)
+        filepath = os.path.join(upload_folder, filename)
+        
+        # Save the file temporarily
         file.save(filepath)
         
-        current_user = get_jwt_identity()
-        prediction = None
-        confidence = None
+        # Get current user
+        user_id = get_jwt_identity()
         
-        if model:
-            try:
-                features = extract_features(filepath)
-                prediction = bool(model.predict(features)[0])
-                confidence = float(model.predict_proba(features)[0][1])
-            except Exception as e:
-                print(f"Prediction error: {e}")
+        # Process the file with your malware detection
+        is_malicious = False  # Default value
+        confidence = 0.0      # Default value
         
+        # Add your actual malware detection logic here
+        if your_malware_detection_function(filepath):
+            is_malicious = True
+            confidence = 0.95  # Example value
+        
+        # Save scan results to database
         conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """INSERT INTO scans 
-               (user_id, filename, file_path, file_size, file_type, is_malicious, confidence, created_at) 
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-            (
-                current_user['id'],
-                filename,
-                filepath,
-                os.path.getsize(filepath),
-                filename.rsplit('.', 1)[1].lower(),
-                prediction,
-                confidence,
-                datetime.now()
-            )
-        )
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            INSERT INTO scans 
+            (user_id, filename, file_path, is_malicious, confidence, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+            RETURNING id
+        """, (user_id, filename, filepath, is_malicious, confidence))
+        
+        scan_id = cursor.fetchone()['id']
         conn.commit()
         
         return jsonify({
-            "filename": filename,
-            "is_malicious": prediction,
+            "success": True,
+            "scan_id": scan_id,
+            "is_malicious": is_malicious,
             "confidence": confidence,
-            "message": "File scanned successfully"
+            "filename": filename
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "File processing failed",
+            "details": str(e)
+        }), 500
+        
     finally:
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
-
+# @app.route('/scans', methods=['GET'])
+# @jwt_required()
+# def get_scans():
+#     current_user = get_jwt_identity()
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+        
+#         if current_user.get('is_admin'):
+#             cursor.execute(""" 
+#                 SELECT scans.*, users.username 
+#                 FROM scans 
+#                 JOIN users ON scans.user_id = users.id
+#                 ORDER BY scans.created_at DESC
+#             """)
+#         else:
+#             cursor.execute(""" 
+#                 SELECT * FROM scans 
+#                 WHERE user_id = %s 
+#                 ORDER BY created_at DESC
+#             """, (current_user['id'],))
+        
+#         scans = cursor.fetchall()
+#         return jsonify({"scans": scans})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         if 'conn' in locals() and conn.is_connected():
+#             cursor.close()
+#             conn.close()
 @app.route('/scans', methods=['GET'])
 @jwt_required()
-def get_scans():
-    current_user = get_jwt_identity()
+def get_user_scans():
     try:
+        # get_jwt_identity() now returns just the user ID string
+        user_id = get_jwt_identity()
+        
+        if not user_id:
+            return jsonify({"error": "Invalid user identity"}), 401
+            
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
-        if current_user.get('is_admin'):
-            cursor.execute(""" 
-                SELECT scans.*, users.username 
-                FROM scans 
-                JOIN users ON scans.user_id = users.id
-                ORDER BY scans.created_at DESC
-            """)
-        else:
-            cursor.execute(""" 
-                SELECT * FROM scans 
-                WHERE user_id = %s 
-                ORDER BY created_at DESC
-            """, (current_user['id'],))
-        
+        cursor.execute("""
+            SELECT id, filename, is_malicious, confidence, created_at
+            FROM scans 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC
+        """, (user_id,))
         scans = cursor.fetchall()
         return jsonify({"scans": scans})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        if 'conn' in locals() and conn.is_connected():
+        if conn.is_connected():
             cursor.close()
             conn.close()
 
@@ -746,6 +853,28 @@ def validate_admin_request(f):
 #         if conn.is_connected():
 #             cursor.close()
 #             conn.close()
+
+# @app.route('/scans', methods=['GET'])
+# @jwt_required()
+# def get_user_scans():
+#     try:
+#         user_id = get_jwt_identity()
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+#         cursor.execute("""
+#             SELECT * FROM scans 
+#             WHERE user_id = %s 
+#             ORDER BY created_at DESC
+#         """, (user_id,))
+#         scans = cursor.fetchall()
+#         return jsonify({"scans": scans})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         if conn.is_connected():
+#             cursor.close()
+#             conn.close()
+
 
 
             

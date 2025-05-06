@@ -32,41 +32,100 @@ function UserDashboard() {
   const [uploading, setUploading] = useState(false);
 
   // Fetch user's scan history
-  const fetchScans = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get('/scans');
-      setScans(response.data.scans || []);
-    } catch (err) {
-      console.error('Error fetching scans:', err);
-      setError(err.response?.data?.error || 'Failed to load scan history');
-    } finally {
-      setLoading(false);
+  // Add this useEffect to verify token structure
+useEffect(() => {
+  const verifyTokenStructure = () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (typeof payload.sub !== 'string') {
+          console.error('Invalid token structure - logging out');
+          logout();
+          navigate('/login');
+        }
+      } catch (e) {
+        console.error('Token parsing error:', e);
+        logout();
+        navigate('/login');
+      }
     }
   };
+
+  verifyTokenStructure();
+}, [logout, navigate]);
+
+// Update your data fetching
+const fetchScans = async () => {
+  try {
+    setLoading(true);
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    // Verify token structure
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (typeof payload.sub !== 'string') {
+      throw new Error('Invalid token structure');
+    }
+
+    const response = await axios.get('/scans', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    setScans(response.data.scans || []);
+  } catch (err) {
+    console.error('Error fetching scans:', err);
+    setError(err.response?.data?.error || 'Failed to load scan history');
+    
+    if (err.response?.status === 401 || err.message.includes('token')) {
+      logout();
+      navigate('/login');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Handle file upload
   const handleFileUpload = async (e) => {
     e.preventDefault();
-    if (!file) return;
-
+    
+    if (!file) {
+      setError('Please select a file first');
+      return;
+    }
+  
     setUploading(true);
     setError('');
-
+  
     const formData = new FormData();
     formData.append('file', file);
-
+  
     try {
       const response = await axios.post('/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      await fetchScans(); // Refresh scan history
-      navigate(`/scan-result/${response.data.scan_id}`);
+  
+      if (response.data.success) {
+        await fetchScans(); // Refresh the scan list
+        navigate(`/scan-result/${response.data.scan_id}`);
+      } else {
+        throw new Error(response.data.error || 'Upload failed');
+      }
     } catch (err) {
       console.error('Upload error:', err);
-      setError(err.response?.data?.error || 'File upload failed');
+      setError(err.response?.data?.error || 
+               err.response?.data?.details || 
+               err.message || 
+               'File upload failed');
     } finally {
       setUploading(false);
     }
@@ -128,12 +187,17 @@ function UserDashboard() {
             <form onSubmit={handleFileUpload}>
               <Grid container spacing={2} alignItems="center">
                 <Grid item xs={12} sm={8}>
-                  <input
-                    type="file"
-                    id="file-upload"
-                    onChange={(e) => setFile(e.target.files[0])}
-                    style={{ display: 'none' }}
-                  />
+                <input
+  type="file"
+  id="file-upload"
+  onChange={(e) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  }}
+  style={{ display: 'none' }}
+  accept=".exe,.dll,.pdf,.docx,.zip"  // Limit file types
+/>
                   <label htmlFor="file-upload">
                     <Button
                       variant="outlined"

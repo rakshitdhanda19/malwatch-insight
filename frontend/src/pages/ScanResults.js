@@ -1,109 +1,132 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
-import { 
-  Box, 
-  Typography, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
-  TableRow, 
+import {
+  Box,
+  Typography,
+  Container,
   Paper,
-  Chip,
-  CircularProgress
+  Button,
+  CircularProgress,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Chip
 } from '@mui/material';
-import { Warning, CheckCircle } from '@mui/icons-material';
+import { ArrowBack } from '@mui/icons-material';
 
-function ScanResults() {
-  const [scans, setScans] = useState([]);
+function ScanResult() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [scan, setScan] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchScans = async () => {
+    const fetchScanDetails = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/scans', {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        setScans(response.data);
-      } catch (error) {
-        console.error('Error fetching scans:', error);
+        setLoading(true);
+        const response = await axios.get(`/scans/${id}`);
+        setScan(response.data.scan);
+      } catch (err) {
+        console.error('Error fetching scan details:', err);
+        setError(err.response?.data?.error || 'Failed to load scan details');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchScans();
-  }, []);
+    fetchScanDetails();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="80vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        Scan History
-      </Typography>
+    <Container maxWidth="md">
+      <Box sx={{ my: 4 }}>
+        <Button
+          variant="outlined"
+          onClick={() => navigate(-1)}
+          startIcon={<ArrowBack />}
+          sx={{ mb: 3 }}
+        >
+          Back to Dashboard
+        </Button>
 
-      {loading ? (
-        <Box display="flex" justifyContent="center" mt={4}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Filename</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Confidence</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {scans.map((scan) => (
-                <TableRow key={scan.id}>
-                  <TableCell>{scan.filename}</TableCell>
-                  <TableCell>{scan.file_type}</TableCell>
-                  <TableCell>
-                    {new Date(scan.created_at).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    {scan.is_malicious ? (
-                      <Chip
-                        icon={<Warning />}
-                        label="Malicious"
-                        color="error"
-                        variant="outlined"
-                      />
-                    ) : (
-                      <Chip
-                        icon={<CheckCircle />}
-                        label="Clean"
-                        color="success"
-                        variant="outlined"
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {scan.confidence ? `${(scan.confidence * 100).toFixed(2)}%` : 'N/A'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
 
-      {!loading && scans.length === 0 && (
-        <Typography variant="body1" align="center" mt={4}>
-          No scan history found
-        </Typography>
-      )}
-    </Box>
+        {scan && (
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h4" gutterBottom>
+              Scan Results: {scan.filename}
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+
+            <List>
+              <ListItem>
+                <ListItemText
+                  primary="Scan Status"
+                  secondary={
+                    <Chip
+                      label={scan.is_malicious ? 'Malicious' : 'Clean'}
+                      color={scan.is_malicious ? 'error' : 'success'}
+                      variant="outlined"
+                    />
+                  }
+                />
+              </ListItem>
+              {scan.confidence && (
+                <ListItem>
+                  <ListItemText
+                    primary="Confidence Level"
+                    secondary={`${Math.round(scan.confidence * 100)}%`}
+                  />
+                </ListItem>
+              )}
+              <ListItem>
+                <ListItemText
+                  primary="File Type"
+                  secondary={scan.file_type || 'Unknown'}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary="File Size"
+                  secondary={`${(scan.file_size / 1024).toFixed(2)} KB`}
+                />
+              </ListItem>
+              <ListItem>
+                <ListItemText
+                  primary="Scan Date"
+                  secondary={new Date(scan.created_at).toLocaleString()}
+                />
+              </ListItem>
+            </List>
+
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="h6" gutterBottom>
+              Analysis Details
+            </Typography>
+            <Typography variant="body1">
+              {scan.analysis_details || 'No additional details available.'}
+            </Typography>
+          </Paper>
+        )}
+      </Box>
+    </Container>
   );
 }
 
-export default ScanResults;
+export default ScanResult;

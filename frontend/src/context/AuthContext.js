@@ -203,35 +203,66 @@ const verifyToken = async () => {
     navigate('/login');
   }, [navigate]);
 
+  // const login = async (username, password) => {
+  //   try {
+  //     setAuthState(prev => ({ ...prev, isLoading: true }));
+      
+  //     const response = await axios.post('/login', { username, password });
+      
+  //     if (!response.data.access_token) {
+  //       throw new Error('No access token received');
+  //     }
+
+  //     localStorage.setItem('token', response.data.access_token);
+
+  //     // Handle both isAdmin and is_admin responses
+  //     const isAdmin = Boolean(response.data.isAdmin ?? response.data.is_admin);
+      
+  //     setAuthState({
+  //       isAuthenticated: true,
+  //       isAdmin,
+  //       username: response.data.username,
+  //       isLoading: false
+  //     });
+
+  //     // Redirect based on role
+  //     navigate(isAdmin ? '/admin' : '/');
+      
+  //     return { success: true };
+  //   } catch (error) {
+  //     console.error('Login error:', error);
+  //     handleLogout();
+  //     return { 
+  //       success: false, 
+  //       error: error.response?.data?.error || error.message || 'Login failed' 
+  //     };
+  //   }
+  // };
   const login = async (username, password) => {
     try {
-      setAuthState(prev => ({ ...prev, isLoading: true }));
-      
       const response = await axios.post('/login', { username, password });
+      const token = response.data.access_token;
       
-      if (!response.data.access_token) {
-        throw new Error('No access token received');
+      // Verify token structure
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (typeof payload.sub !== 'string') {
+        throw new Error('Invalid token format: subject must be string');
       }
-
-      localStorage.setItem('token', response.data.access_token);
-
-      // Handle both isAdmin and is_admin responses
-      const isAdmin = Boolean(response.data.isAdmin ?? response.data.is_admin);
+  
+      localStorage.setItem('token', token);
       
       setAuthState({
         isAuthenticated: true,
-        isAdmin,
+        isAdmin: response.data.isAdmin,
         username: response.data.username,
         isLoading: false
       });
-
-      // Redirect based on role
-      navigate(isAdmin ? '/admin' : '/');
+  
+      navigate(response.data.isAdmin ? '/admin' : '/');
       
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
-      handleLogout();
+      console.error('Login failed:', error);
       return { 
         success: false, 
         error: error.response?.data?.error || error.message || 'Login failed' 
