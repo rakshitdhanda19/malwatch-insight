@@ -1,6 +1,4 @@
-// context/AuthContext.js
-
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,91 +14,125 @@ export function AuthProvider({ children }) {
 
   const navigate = useNavigate();
 
-  // Axios config
+  // Axios configuration
   axios.defaults.withCredentials = true;
   axios.defaults.baseURL = 'http://localhost:5000';
   axios.defaults.headers.common['Content-Type'] = 'application/json';
 
-  // Axios response interceptor
+  // Request interceptor to attach token
   useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
+    const requestInterceptor = axios.interceptors.request.use(config => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    }, error => {
+      return Promise.reject(error);
+    });
+
+    return () => {
+      axios.interceptors.request.eject(requestInterceptor);
+    };
+  }, []);
+
+  // Response interceptor to handle 401 errors
+  useEffect(() => {
+    const responseInterceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
         if (error.response?.status === 401) {
-          localStorage.removeItem('token');
-          setAuthState({
-            isAuthenticated: false,
-            isAdmin: false,
-            username: '',
-            isLoading: false,
-          });
-          navigate('/login');
+          handleLogout();
         }
         return Promise.reject(error);
       }
     );
 
     return () => {
-      axios.interceptors.response.eject(interceptor);
+      axios.interceptors.response.eject(responseInterceptor);
     };
   }, [navigate]);
 
-  // Verify token on load
-  useEffect(() => {
-    const verifyToken = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setAuthState((prev) => ({ ...prev, isLoading: false }));
-        return;
-      }
+  // Token verification function
+  const verifyToken = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      return false;
+    }
 
-      try {
-        const response = await axios.get('/verify-token', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+    try {
+      const response = await axios.get('/verify-token', {
+        validateStatus: status => status < 500 // Don't throw on 4xx errors
+      });
 
-        if (response.data?.user) {
-          setAuthState({
-            isAuthenticated: true,
-            isAdmin: response.data.user.is_admin,
-            username: response.data.user.username,
-            isLoading: false,
-          });
-        } else {
-          throw new Error('Invalid user data');
-        }
-      } catch (error) {
-        console.error('Token verification failed:', error);
-        localStorage.removeItem('token');
+      if (response.status === 200 && response.data?.user) {
         setAuthState({
-          isAuthenticated: false,
-          isAdmin: false,
-          username: '',
-          isLoading: false,
+          isAuthenticated: true,
+          isAdmin: Boolean(response.data.user.is_admin),
+          username: response.data.user.username,
+          isLoading: false
         });
+        return true;
       }
-    };
 
-    verifyToken();
+      // If verification failed
+      throw new Error(response.data?.error || 'Token verification failed');
+    } catch (error) {
+      console.error('Token verification error:', error.message);
+      handleLogout();
+      return false;
+    }
   }, []);
+
+  // Verify token on initial load
+  useEffect(() => {
+    verifyToken();
+  }, [verifyToken]);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('token');
+    setAuthState({
+      isAuthenticated: false,
+      isAdmin: false,
+      username: '',
+      isLoading: false,
+    });
+    navigate('/login');
+  }, [navigate]);
 
   const login = async (username, password) => {
     try {
+      setAuthState(prev => ({ ...prev, isLoading: true }));
+      
       const response = await axios.post('/login', { username, password });
+      
+      if (!response.data.access_token) {
+        throw new Error('No access token received');
+      }
+
       localStorage.setItem('token', response.data.access_token);
 
+      // Handle both isAdmin and is_admin responses
+      const isAdmin = Boolean(response.data.isAdmin ?? response.data.is_admin);
+      
       setAuthState({
         isAuthenticated: true,
-        isAdmin: response.data.is_admin,
+        isAdmin,
         username: response.data.username,
-        isLoading: false,
+        isLoading: false
       });
 
+      // Redirect based on role
+      navigate(isAdmin ? '/admin' : '/');
+      
       return { success: true };
     } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.error || 'Login failed',
+      console.error('Login error:', error);
+      handleLogout();
+      return { 
+        success: false, 
+        error: error.response?.data?.error || error.message || 'Login failed' 
       };
     }
   };
@@ -112,8 +144,13 @@ export function AuthProvider({ children }) {
         email,
         password,
       });
-      return { success: response.data.success };
+      
+      return { 
+        success: response.data.success,
+        message: response.data.message 
+      };
     } catch (error) {
+      console.error('Registration error:', error);
       return {
         success: false,
         error: error.response?.data?.error || 'Registration failed',
@@ -121,32 +158,36 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    setAuthState({
-      isAuthenticated: false,
-      isAdmin: false,
-      username: '',
-      isLoading: false,
-    });
-    navigate('/login');
-  };
-
+  // const value = {
+  //   authState,
+  //   isAuthenticated: authState.isAuthenticated,
+  //   isAdmin: authState.isAdmin,
+  //   username: authState.username,
+  //   isLoading: authState.isLoading,
+  //   login,
+  //   logout: handleLogout,
+  //   register,
+  //   verifyToken, // Expose for manual verification if needed
+  // };
   const value = {
     authState,
-    setAuthState, // ✅ make sure this is accessible!
     isAuthenticated: authState.isAuthenticated,
     isAdmin: authState.isAdmin,
     username: authState.username,
     isLoading: authState.isLoading,
-    login,
-    logout,
+    login,  // Make sure this is included
+    logout :handleLogout,
     register,
+    // Don't expose setAuthState directly - it's an implementation detail
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

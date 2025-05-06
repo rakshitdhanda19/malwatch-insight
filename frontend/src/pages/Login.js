@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
 import {
   Box,
   TextField,
@@ -17,7 +16,9 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { setAuthState } = useAuth();
+  
+  // Use the login function from AuthContext instead of setAuthState
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -26,30 +27,18 @@ function Login() {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:5000/login', {
-        username,
-        password
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      localStorage.setItem('token', response.data.access_token);
-
-      // ✅ Correctly update auth state including isLoading
-      setAuthState({
-        isAuthenticated: true,
-        isAdmin: response.data.is_admin,
-        username: response.data.username,
-        isLoading: false // Important to avoid stuck loading
-      });
-
-      // ✅ Navigate based on role
-      navigate(response.data.is_admin ? '/admin' : '/');
+      // Use the login function from context instead of direct axios call
+      const result = await login(username, password);
+      
+      if (result.success) {
+        // Navigation is already handled by the AuthContext's login function
+        // No need to navigate here as it's handled in the context
+      } else {
+        setError(result.error || 'Login failed');
+      }
     } catch (error) {
       console.error('Login error:', error);
-      setError(error.response?.data?.error || 'Invalid username or password');
+      setError(error.message || 'Invalid username or password');
     } finally {
       setLoading(false);
     }
@@ -63,7 +52,7 @@ function Login() {
         alignItems: 'center',
         justifyContent: 'center',
         height: '100vh',
-        backgroundColor: '#f5f5f5'
+        backgroundColor: '#000000'
       }}
     >
       <Box
@@ -119,7 +108,14 @@ function Login() {
           variant="contained"
           fullWidth
           size="large"
-          sx={{ mt: 3, mb: 2 }}
+          sx={{ 
+            mt: 3, 
+            mb: 2,
+            backgroundColor: '#ff0000', // Red color
+            '&:hover': {
+              backgroundColor: '#cc0000', // Darker red on hover
+            }
+          }}
           disabled={loading}
         >
           {loading ? <CircularProgress size={24} color="inherit" /> : 'Login'}

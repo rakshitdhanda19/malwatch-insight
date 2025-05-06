@@ -19,7 +19,8 @@ print("Loaded JWT_SECRET from .env:", os.getenv('JWT_SECRET'))
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}},
+expose_headers=["Authorization"])
 
 # Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET')
@@ -129,66 +130,142 @@ def register():
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
-
+            
 @app.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()  # Use get_json() instead of request.json
-    if not data or 'username' not in data or 'password' not in data:
-        return jsonify({"error": "Username and password required"}), 400
-
+    data = request.get_json()
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE username = %s", (data['username'],))
         user = cursor.fetchone()
 
-        if not user:
+        if not user or not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
             return jsonify({"error": "Invalid credentials"}), 401
 
-        if not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
-            return jsonify({"error": "Invalid credentials"}), 401
-
-        # Create token with additional claims
-        additional_claims = {
-            "is_admin": user['is_admin'],
-            "username": user['username']
-        }
-        access_token = create_access_token(
-            identity=user['id'],
-            additional_claims=additional_claims
-        )
+        # Debug output
+        print(f"User {user['username']} is_admin: {bool(user['is_admin'])}")
+        
+        access_token = create_access_token(identity={
+            'id': user['id'],
+            'username': user['username'],
+            'is_admin': bool(user['is_admin'])
+        },
+         additional_claims={
+            'user_id': user['id'],  # Explicit claims
+            'is_admin': bool(user['is_admin'])
+        })
         
         return jsonify({
             "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user['id'],
-                "username": user['username'],
-                "is_admin": user['is_admin']
-            }
-        }), 200
-
+            "isAdmin": bool(user['is_admin']),  # MUST be camelCase for React
+            "username": user['username']
+        })
     except Exception as e:
         print(f"Login error: {str(e)}")
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"error": str(e)}), 500
     finally:
-        if 'conn' in locals() and conn.is_connected():
+        if conn.is_connected():
             cursor.close()
-            conn.close()
+            conn.close()           
+
+# @app.route('/login', methods=['POST'])
+# def login():
+#     data = request.get_json()  # Use get_json() instead of request.json
+#     if not data or 'username' not in data or 'password' not in data:
+#         return jsonify({"error": "Username and password required"}), 400
+
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+#         cursor.execute("SELECT * FROM users WHERE username = %s", (data['username'],))
+#         user = cursor.fetchone()
+
+#         if not user:
+#             return jsonify({"error": "Invalid credentials"}), 401
+
+#         if not bcrypt.checkpw(data['password'].encode(), user['password'].encode()):
+#             return jsonify({"error": "Invalid credentials"}), 401
+
+#         # Create token with additional claims
+#         additional_claims = {
+#             "is_admin": user['is_admin'],
+#             "username": user['username']
+#         }
+#         access_token = create_access_token(
+#             identity=user['id'],
+#             additional_claims=additional_claims
+#         )
+        
+#         return jsonify({
+#             "access_token": access_token,
+#             "token_type": "bearer",
+#             "user": {
+#                 "id": user['id'],
+#                 "username": user['username'],
+#                 "is_admin": user['is_admin']
+#             }
+#         }), 200
+
+#     except Exception as e:
+#         print(f"Login error: {str(e)}")
+#         return jsonify({"error": "Internal server error"}), 500
+#     finally:
+#         if 'conn' in locals() and conn.is_connected():
+#             cursor.close()
+#             conn.close()
+
+# @app.route('/verify-token', methods=['GET'])
+# @jwt_required()
+# def verify_token():
+#     try:
+#         current_user = get_jwt_identity()
+        
+#         # Verify the token structure is correct
+#         if not current_user or 'id' not in current_user:
+#             return jsonify({"error": "Invalid token structure"}), 422
+            
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+        
+#         cursor.execute("""
+#             SELECT id, username, is_admin 
+#             FROM users 
+#             WHERE id = %s
+#         """, (current_user['id'],))
+#         user = cursor.fetchone()
+        
+#         if not user:
+#             return jsonify({"error": "User not found"}), 404
+            
+#         return jsonify({
+#             "user": {
+#                 "id": user['id'],
+#                 "username": user['username'],
+#                 "is_admin": bool(user['is_admin'])  # Ensure boolean
+#             }
+#         }), 200
+        
+#     except Exception as e:
+#         print(f"Token verification error: {str(e)}")
+#         return jsonify({"error": "Token verification failed"}), 401
+#     finally:
+#         if 'conn' in locals() and conn.is_connected():
+#             cursor.close()
+#             conn.close()
 
 @app.route('/verify-token', methods=['GET'])
 @jwt_required()
 def verify_token():
-    try:
-        current_user = get_jwt_identity()
+    current_user = get_jwt_identity()
+    
+    # Add validation
+    if not current_user or 'id' not in current_user:
+        return jsonify({"error": "Invalid token structure"}), 422
         
-        # Verify the token structure is correct
-        if not current_user or 'id' not in current_user:
-            return jsonify({"error": "Invalid token structure"}), 422
-            
+    try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        
         cursor.execute("""
             SELECT id, username, is_admin 
             FROM users 
@@ -203,17 +280,64 @@ def verify_token():
             "user": {
                 "id": user['id'],
                 "username": user['username'],
-                "is_admin": bool(user['is_admin'])  # Ensure boolean
+                "is_admin": bool(user['is_admin'])
             }
-        }), 200
-        
+        })
     except Exception as e:
-        print(f"Token verification error: {str(e)}")
-        return jsonify({"error": "Token verification failed"}), 401
+        return jsonify({"error": str(e)}), 401
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+@app.route('/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Prevent deleting yourself
+        current_user = get_jwt_identity()
+        if current_user['id'] == user_id:
+            return jsonify({"error": "Cannot delete yourself"}), 400
+            
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        conn.commit()
+        
+        if cursor.rowcount == 0:
+            return jsonify({"error": "User not found"}), 404
+            
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
-            conn.close()
+            conn.close() 
+            
+# @app.route('/admin/scans', methods=['GET'])
+# @admin_required
+# def get_all_scans():
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+        
+#         cursor.execute("""
+#             SELECT scans.*, users.username 
+#             FROM scans
+#             JOIN users ON scans.user_id = users.id
+#             ORDER BY scans.created_at DESC
+#         """)
+#         scans = cursor.fetchall()
+        
+#         return jsonify({"scans": scans})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+#     finally:
+#         if conn.is_connected():
+#             cursor.close()
+#             conn.close()                     
 
 @app.route('/upload', methods=['POST'])
 @jwt_required()
@@ -311,20 +435,89 @@ def get_scans():
             conn.close()
 
 @app.route('/admin/users', methods=['GET'])
+@jwt_required()  # Ensures valid JWT is present
+@admin_required  # Your custom admin check decorator
+def get_all_users():
+    conn = None
+    cursor = None
+    try:
+        # Get and verify current user
+        current_user = get_jwt_identity()
+        if not current_user:
+            return jsonify({"error": "Invalid user identity"}), 401
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # Improved query with parameterized inputs
+        query = """
+            SELECT 
+                id, 
+                username, 
+                email, 
+                is_admin, 
+                created_at,
+                last_login  # Added example additional field
+            FROM users
+            WHERE id != %s
+            ORDER BY created_at DESC
+            LIMIT 100  # Added safety limit
+        """
+        cursor.execute(query, (current_user['id'],))
+        
+        users = cursor.fetchall()
+        
+        # Sanitize sensitive data before returning
+        for user in users:
+            user.pop('password_hash', None)  # If accidentally selected
+            user['created_at'] = str(user['created_at'])  # Convert datetime
+            
+        return jsonify({
+            "success": True,
+            "users": users,
+            "count": len(users)
+        })
+        
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+    except Exception as e:
+        app.logger.error(f"Error fetching users: {str(e)}")
+        return jsonify({
+            "error": "Failed to fetch users",
+            "details": str(e)
+        }), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+
+@app.route('/admin/scans', methods=['GET'])
 @admin_required
-def get_users():
+def get_all_scans():
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, username, email, is_admin, created_at FROM users")
-        users = cursor.fetchall()
-        return jsonify({"users": users})
+        
+        cursor.execute("""
+            SELECT scans.*, users.username 
+            FROM scans
+            JOIN users ON scans.user_id = users.id
+            ORDER BY scans.created_at DESC
+        """)
+        
+        scans = cursor.fetchall()
+        return jsonify({"scans": scans})
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        if 'conn' in locals() and conn.is_connected():
+        if conn.is_connected():
             cursor.close()
             conn.close()
+
 
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)

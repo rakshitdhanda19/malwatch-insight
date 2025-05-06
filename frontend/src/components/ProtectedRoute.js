@@ -19,11 +19,21 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const userRole = authState.isAdmin ? 'admin' : 'user';
-  if (allowedRoles && !allowedRoles.includes(userRole)) {
+ 
+  // HARD redirect for admins
+  if (authState.isAdmin && !location.pathname.startsWith('/admin')) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  // Block non-admins from admin routes
+  if (!authState.isAdmin && location.pathname.startsWith('/admin')) {
     return <Navigate to="/" replace />;
   }
 
+  const userRole = authState.isAdmin ? 'admin' : 'user';
+  if (!allowedRoles.includes(userRole)) {
+    return <Navigate to="/" replace />;
+  }
   return children;
 };
 
