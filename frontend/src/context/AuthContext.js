@@ -35,6 +35,24 @@ export function AuthProvider({ children }) {
       axios.interceptors.request.eject(requestInterceptor);
     };
   }, []);
+  // Add to your AuthContext.js
+// Add to your AuthContext.js
+useEffect(() => {
+  const interceptor = axios.interceptors.request.use(config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    config.headers['Content-Type'] = 'application/json';
+    return config;
+  }, error => {
+    return Promise.reject(error);
+  });
+
+  return () => {
+    axios.interceptors.request.eject(interceptor);
+  };
+}, []);
 
   // Response interceptor to handle 401 errors
   useEffect(() => {
@@ -54,41 +72,125 @@ export function AuthProvider({ children }) {
   }, [navigate]);
 
   // Token verification function
-  const verifyToken = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setAuthState(prev => ({ ...prev, isLoading: false }));
-      return false;
-    }
+  // const verifyToken = useCallback(async () => {
+  //   const token = localStorage.getItem('token');
+  //   if (!token) {
+  //     setAuthState(prev => ({ ...prev, isLoading: false }));
+  //     return false;
+  //   }
 
-    try {
-      const response = await axios.get('/verify-token', {
-        validateStatus: status => status < 500 // Don't throw on 4xx errors
+  //   try {
+  //     const response = await axios.get('/verify-token', {
+  //       validateStatus: status => status < 500 // Don't throw on 4xx errors
+  //     });
+
+  //     if (response.status === 200 && response.data?.user) {
+  //       setAuthState({
+  //         isAuthenticated: true,
+  //         isAdmin: Boolean(response.data.user.is_admin),
+  //         username: response.data.user.username,
+  //         isLoading: false
+  //       });
+  //       return true;
+  //     }
+
+  //     // If verification failed
+  //     throw new Error(response.data?.error || 'Token verification failed');
+  //   } catch (error) {
+  //     console.error('Token verification error:', error.message);
+  //     handleLogout();
+  //     return false;
+  //   }
+  // }, []);
+
+  // const initialState = {
+  //   isAuthenticated: false,
+  //   isAdmin: false,
+  //   user: null,
+  //   token: null,
+  //   isLoading: true
+  // };
+  
+
+  // // Verify token on initial load
+  // useEffect(() => {
+  //   verifyToken();
+  // }, [verifyToken]);
+  // const verifyUser = async () => {
+  //   try {
+  //     const res = await axios.get('/verify-token', {
+  //       headers: {
+  //         'Authorization': `Bearer ${localStorage.getItem('token')}`,
+  //         'Content-Type': 'application/json'
+  //       },
+  //       withCredentials: true
+  //     });
+      
+  //     if (!res.data?.user?.is_admin) {
+  //       throw new Error("User lacks admin privileges");
+  //     }
+      
+  //     setAuthState({
+  //       ...res.data.user,
+  //       isAuthenticated: true,
+  //       isAdmin: res.data.user.is_admin === true,
+  //       token: localStorage.getItem('token')
+  //     });
+  //   } catch (err) {
+  //     console.error("Token verification failed:", err);
+  //     localStorage.removeItem('token');
+  //     setAuthState(initialState);
+  //   }
+  // };
+  // In AuthContext.js
+const verifyToken = async () => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    setAuthState(prev => ({ ...prev, isLoading: false }));
+    return false;
+  }
+
+  try {
+    const response = await axios.get('/verify-token', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      validateStatus: (status) => status < 500 // Don't throw on 4xx errors
+    });
+
+    if (response.status === 200 && response.data?.user) {
+      setAuthState({
+        isAuthenticated: true,
+        isAdmin: Boolean(response.data.user.is_admin),
+        username: response.data.user.username,
+        isLoading: false
       });
-
-      if (response.status === 200 && response.data?.user) {
-        setAuthState({
-          isAuthenticated: true,
-          isAdmin: Boolean(response.data.user.is_admin),
-          username: response.data.user.username,
-          isLoading: false
-        });
-        return true;
-      }
-
-      // If verification failed
-      throw new Error(response.data?.error || 'Token verification failed');
-    } catch (error) {
-      console.error('Token verification error:', error.message);
-      handleLogout();
-      return false;
+      return true;
     }
-  }, []);
 
-  // Verify token on initial load
-  useEffect(() => {
-    verifyToken();
-  }, [verifyToken]);
+    // If verification failed
+    throw new Error(response.data?.error || 'Token verification failed');
+  } catch (error) {
+    console.error('Token verification error:', error.message);
+    handleLogout();
+    return false;
+  }
+};
+
+  // After login/verify token
+// const verifyUser = async () => {
+//   try {
+//     const res = await axios.get('/verify-token');
+//     setAuthState({
+//       ...res.data.user,
+//       isAuthenticated: true,
+//       isAdmin: res.data.user.is_admin === true
+//     });
+//   } catch (err) {
+//     localStorage.removeItem('token');
+    
+//   }
+// };
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
