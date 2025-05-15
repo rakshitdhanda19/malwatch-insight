@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ScanResults from './pages/ScanResults';
 import Layout from './components/Layout';
 import AuthLoader from './components/AuthLoader';
+import SpamDetection from './components/SpamDetection';
 
 function App() {
   return (
@@ -37,9 +38,15 @@ function App() {
                 <UserDashboard />
               </ProtectedRoute>
             } />
-            <Route path="/scan-results" element={
+            <Route path="/scan-result/:id" element={
               <ProtectedRoute allowedRoles={['user', 'admin']}>
                 <ScanResults />
+              </ProtectedRoute>
+            } />
+            {/* Spam Detection route */}
+            <Route path="/spam-detection" element={
+              <ProtectedRoute allowedRoles={['user', 'admin']}>
+                <SpamDetection />
               </ProtectedRoute>
             } />
           </Route>

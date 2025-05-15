@@ -12,6 +12,8 @@ import hashlib
 import pefile
 from functools import wraps
 from datetime import datetime
+import ember
+import lightgbm as lgb
 
 # Load environment variables
 load_dotenv()
@@ -80,40 +82,27 @@ def admin_required(fn):
 
 # ML Model Initialization
 try:
-    model = joblib.load('malware_model.pkl')
+    # model = joblib.load(r'C:/Users/IT CITY/Downloads/malwatch-insight(1)/malwatch-insight/backend/models/malware_model.pkl')
+    model = lgb.Booster(model_file="models/ember_model_2018.txt")
     print("ML model loaded successfully")
 except Exception as e:
     print(f"Error loading ML model: {e}")
     model = None
 
 def extract_features(filepath):
-    """Extract features from file for malware detection"""
-    features = []
+    """Extract features from file using ember for malware detection (2381 features)."""
     try:
-        # File size
-        file_size = os.path.getsize(filepath)
-        features.append(file_size)
-        
-        # Hash features
         with open(filepath, 'rb') as f:
-            file_bytes = f.read()
-            features.append(int(hashlib.md5(file_bytes).hexdigest()[:8], 16))
-            features.append(int(hashlib.sha256(file_bytes).hexdigest()[:8], 16))
-        
-        # PE header features (for executables)
-        if filepath.endswith(('.exe', '.dll')):
-            pe = pefile.PE(filepath)
-            features.append(len(pe.sections))
-            features.append(pe.OPTIONAL_HEADER.AddressOfEntryPoint)
-            features.append(pe.OPTIONAL_HEADER.DllCharacteristics)
-        else:
-            features.extend([0, 0, 0])
-            
+            bytez = f.read()
+        # Use ember to create the feature vector (2381 features for EMBER 2018 model)
+        features = ember.create_vector(bytez)
+        # Ensure the features are in a format compatible with lightgbm (numpy array, 2D)
+        return np.array([features])
+
     except Exception as e:
-        print(f"Feature extraction error: {e}")
-        features.extend([0]*6)
-        
-    return np.array([features])
+        print(f"Feature extraction error with ember: {e}")
+        # Return a vector of zeros with the expected EMBER size if extraction fails
+        return np.zeros((1, 2381)) # EMBER 2018 model expects 2381 features
 
 # Routes
 @app.route('/')
@@ -330,9 +319,10 @@ def upload_file():
         print(f"Files in request: {request.files}")
         print(f"Form data: {request.form}")
         
-        # First check if the file exists in the request
+        # First check if the file exists in the requestz
         if 'file' not in request.files:
-            print("Error: No file part in the request")
+            # print("Error: No file part in the request")
+            print(f"requeted test : {request.files}")
             return jsonify({"error": "No file part in the request"}), 400
         
         file = request.files['file']
@@ -376,11 +366,15 @@ def upload_file():
         if model is not None:
             print("Running malware detection")
             features = extract_features(filepath)
-            prediction = model.predict(features)[0]
-            confidence_np = model.predict_proba(features)[0][1]
-            # Convert numpy.float64 to Python float
-            confidence = float(confidence_np)
-            is_malicious = bool(prediction)
+            print(f"Shape of features before model.predict: {features.shape}")
+
+            # Use model.predict for both prediction and confidence in binary classification
+            raw_prediction = model.predict(features)[0]
+
+            # Assuming raw_prediction is the probability for the positive class (malicious)
+            confidence = float(raw_prediction) # Ensure confidence is a float
+            is_malicious = bool(raw_prediction > 0.5) # Use a threshold of 0.5 for binary classification
+
             print(f"Malware detection results: Malicious={is_malicious}, Confidence={confidence}")
         else:
             print("Warning: ML model not loaded")

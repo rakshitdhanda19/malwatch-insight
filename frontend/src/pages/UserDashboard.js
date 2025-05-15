@@ -20,7 +20,7 @@ import {
   CardContent,
   Grid
 } from '@mui/material';
-import { Logout, CloudUpload, History } from '@mui/icons-material';
+import { Logout, CloudUpload, History, Email } from '@mui/icons-material';
 
 function UserDashboard() {
   const { authState, logout } = useAuth();
@@ -119,48 +119,79 @@ function UserDashboard() {
           </Alert>
         )}
 
-        {/* Upload Section */}
-        <Card sx={{ mb: 4 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Upload File for Scanning
-            </Typography>
-            <form onSubmit={handleFileUpload}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={8}>
-                  <input
-                    type="file"
-                    id="file-upload"
-                    onChange={(e) => setFile(e.target.files[0])}
-                    style={{ display: 'none' }}
-                  />
-                  <label htmlFor="file-upload">
-                    <Button
-                      variant="outlined"
-                      component="span"
-                      fullWidth
-                      startIcon={<CloudUpload />}
-                    >
-                      {file ? file.name : 'Select File'}
-                    </Button>
-                  </label>
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    color="primary"
-                    fullWidth
-                    disabled={!file || uploading}
-                    startIcon={uploading ? <CircularProgress size={20} /> : null}
-                  >
-                    {uploading ? 'Scanning...' : 'Scan File'}
-                  </Button>
-                </Grid>
-              </Grid>
-            </form>
-          </CardContent>
-        </Card>
+        {/* Feature Cards */}
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          {/* Malware Scanning Card */}
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Malware Scanning
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Upload and scan files for potential malware
+                </Typography>
+                <form onSubmit={handleFileUpload}>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} sm={8}>
+                      <input
+                        type="file"
+                        id="file-upload"
+                        onChange={(e) => setFile(e.target.files[0])}
+                        style={{ display: 'none' }}
+                      />
+                      <label htmlFor="file-upload">
+                        <Button
+                          variant="outlined"
+                          component="span"
+                          fullWidth
+                          startIcon={<CloudUpload />}
+                        >
+                          {file ? file.name : 'Select File'}
+                        </Button>
+                      </label>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Button
+                        type="submit"
+                        variant="contained"
+                        color="primary"
+                        fullWidth
+                        disabled={!file || uploading}
+                        startIcon={uploading ? <CircularProgress size={20} /> : null}
+                      >
+                        {uploading ? 'Scanning...' : 'Scan File'}
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </form>
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          {/* Spam Detection Card */}
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Spam Detection
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Check if an email is legitimate or spam
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  fullWidth
+                  startIcon={<Email />}
+                  onClick={() => navigate('/spam-detection')}
+                >
+                  Check Email
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
 
         {/* Scan History Section */}
         <Card>

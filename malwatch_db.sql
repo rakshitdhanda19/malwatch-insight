@@ -50,7 +50,7 @@ CREATE TABLE `scans` (
   `file_size` bigint(20) NOT NULL,
   `file_type` varchar(50) NOT NULL,
   `is_malicious` tinyint(1) NOT NULL,
-  `confidence` float DEFAULT NULL,
+  `confidence` DOUBLE DEFAULT NULL,
   `ml_model` varchar(50) NOT NULL DEFAULT 'RandomForest',
   `scan_details` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`scan_details`)),
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()

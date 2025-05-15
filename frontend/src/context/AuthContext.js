@@ -54,6 +54,11 @@ export function AuthProvider({ children }) {
     };
   }, [navigate]);
 
+  // Add this useEffect to verify token on component mount
+  useEffect(() => {
+    verifyToken();
+  }, []);
+
   // Token verification function
   const verifyToken = async () => {
     const token = localStorage.getItem('token');
