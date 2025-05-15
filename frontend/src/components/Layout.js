@@ -187,17 +187,7 @@ const fetchScans = async () => {
             <form onSubmit={handleFileUpload}>
               <Grid container spacing={2} alignItems="center">
                 <Grid item xs={12} sm={8}>
-                <input
-  type="file"
-  id="file-upload"
-  onChange={(e) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  }}
-  style={{ display: 'none' }}
-  accept=".exe,.dll,.pdf,.docx,.zip"  // Limit file types
-/>
+
                   <label htmlFor="file-upload">
                     <Button
                       variant="outlined"
@@ -208,6 +198,17 @@ const fetchScans = async () => {
                       {file ? file.name : 'Select File'}
                     </Button>
                   </label>
+                  <input
+  type="file"
+  id="file-upload"
+  onChange={(e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0]);
+    }
+  }}
+  style={{ display: 'none' }}
+  accept=".exe,.dll,.pdf,.docx,.zip"
+/>
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <Button
