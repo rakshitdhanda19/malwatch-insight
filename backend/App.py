@@ -12,8 +12,18 @@ import hashlib
 import pefile
 from functools import wraps
 from datetime import datetime
-import ember
-import lightgbm as lgb
+from flask import Flask, request, jsonify
+import joblib
+import numpy as np
+from tensorflow.keras.models import load_model
+import tensorflow as tf
+from feature_extractor import extract_features
+
+
+# Load models and scaler
+rf_model = joblib.load('models/random_forest_model.joblib')
+scaler = joblib.load('models/scaler.joblib')
+lstm_model = tf.keras.models.load_model('models/lstm_model.keras')  # Optional
 
 # Load environment variables
 load_dotenv()
@@ -79,30 +89,6 @@ def admin_required(fn):
             return jsonify({"error": "Admin access required"}), 403
         return fn(*args, **kwargs)
     return wrapper
-
-# ML Model Initialization
-try:
-    # model = joblib.load(r'C:/Users/IT CITY/Downloads/malwatch-insight(1)/malwatch-insight/backend/models/malware_model.pkl')
-    model = lgb.Booster(model_file="models/ember_model_2018.txt")
-    print("ML model loaded successfully")
-except Exception as e:
-    print(f"Error loading ML model: {e}")
-    model = None
-
-def extract_features(filepath):
-    """Extract features from file using ember for malware detection (2381 features)."""
-    try:
-        with open(filepath, 'rb') as f:
-            bytez = f.read()
-        # Use ember to create the feature vector (2381 features for EMBER 2018 model)
-        features = ember.create_vector(bytez)
-        # Ensure the features are in a format compatible with lightgbm (numpy array, 2D)
-        return np.array([features])
-
-    except Exception as e:
-        print(f"Feature extraction error with ember: {e}")
-        # Return a vector of zeros with the expected EMBER size if extraction fails
-        return np.zeros((1, 2381)) # EMBER 2018 model expects 2381 features
 
 # Routes
 @app.route('/')
@@ -310,108 +296,237 @@ def delete_user(user_id):
             cursor.close()
             conn.close() 
 
-@app.route('/upload', methods=['POST'])
-@jwt_required()
-def upload_file():
-    try:
-        # Debug information
-        print("Upload request received")
-        print(f"Files in request: {request.files}")
-        print(f"Form data: {request.form}")
+
+       
+
+# @app.route('/upload', methods=['POST'])
+# @jwt_required()
+# def upload_file():
+#     try:
+#         # Debug information
+#         print("Upload request received")
+#         print(f"Files in request: {request.files}")
+#         print(f"Form data: {request.form}")
         
-        # First check if the file exists in the requestz
-        if 'file' not in request.files:
-            # print("Error: No file part in the request")
-            print(f"requeted test : {request.files}")
-            return jsonify({"error": "No file part in the request"}), 400
+#         # First check if the file exists in the requestz
+#         if 'file' not in request.files:
+#             # print("Error: No file part in the request")
+#             print(f"requeted test : {request.files}")
+#             return jsonify({"error": "No file part in the request"}), 400
         
-        file = request.files['file']
-        print(f"File received: {file.filename}")
+#         file = request.files['file']
+#         print(f"File received: {file.filename}")
         
-        # Check if a file was actually selected
-        if file.filename == '':
-            print("Error: No file selected (empty filename)")
-            return jsonify({"error": "No file selected"}), 400
+#         # Check if a file was actually selected
+#         if file.filename == '':
+#             print("Error: No file selected (empty filename)")
+#             return jsonify({"error": "No file selected"}), 400
         
-        # Verify allowed file types
-        allowed_extensions = {'exe', 'dll', 'pdf', 'docx', 'zip'}
-        if '.' not in file.filename:
-            print("Error: Filename has no extension")
-            return jsonify({"error": "Invalid file type - no extension"}), 400
+#         # Verify allowed file types
+#         allowed_extensions = {'exe', 'dll', 'pdf', 'docx', 'zip'}
+#         if '.' not in file.filename:
+#             print("Error: Filename has no extension")
+#             return jsonify({"error": "Invalid file type - no extension"}), 400
             
-        extension = file.filename.rsplit('.', 1)[1].lower()
-        if extension not in allowed_extensions:
-            print(f"Error: Invalid file extension '{extension}'. Allowed: {allowed_extensions}")
-            return jsonify({"error": f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"}), 400
+#         extension = file.filename.rsplit('.', 1)[1].lower()
+#         if extension not in allowed_extensions:
+#             print(f"Error: Invalid file extension '{extension}'. Allowed: {allowed_extensions}")
+#             return jsonify({"error": f"Invalid file type. Allowed types: {', '.join(allowed_extensions)}"}), 400
         
-        # Secure the filename and prepare upload
+#         # Secure the filename and prepare upload
+#         filename = secure_filename(file.filename)
+#         upload_folder = app.config['UPLOAD_FOLDER']
+#         os.makedirs(upload_folder, exist_ok=True)
+#         filepath = os.path.join(upload_folder, filename)
+#         print(f"Saving file to {filepath}")
+        
+#         # Save the file temporarily
+#         file.save(filepath)
+        
+#         # Get current user
+#         user_id = get_jwt_identity()
+#         print(f"User ID from token: {user_id}")
+        
+#         # Process the file with your malware detection
+#         is_malicious = False  # Default value
+#         confidence = 0.0      # Default value
+        
+#         # Add your actual malware detection logic here
+#         if model is not None:
+#             print("Running malware detection")
+#             features = extract_features(filepath)
+#             print(f"Shape of features before model.predict: {features.shape}")
+
+#             # Use model.predict for both prediction and confidence in binary classification
+#             raw_prediction = model.predict(features)[0]
+
+#             # Assuming raw_prediction is the probability for the positive class (malicious)
+#             confidence = float(raw_prediction) # Ensure confidence is a float
+#             is_malicious = bool(raw_prediction > 0.5) # Use a threshold of 0.5 for binary classification
+
+#             print(f"Malware detection results: Malicious={is_malicious}, Confidence={confidence}")
+#         else:
+#             print("Warning: ML model not loaded")
+        
+#         # Save scan results to database
+#         conn = get_db_connection()
+#         cursor = conn.cursor(dictionary=True)
+#         cursor.execute("""
+#             INSERT INTO scans 
+#             (user_id, filename, file_path, is_malicious, confidence, created_at)
+#             VALUES (%s, %s, %s, %s, %s, NOW())
+#         """, (user_id, filename, filepath, is_malicious, confidence))
+        
+#         conn.commit()
+#         scan_id = cursor.lastrowid
+#         print(f"Scan saved to database with ID: {scan_id}")
+        
+#         return jsonify({
+#             "success": True,
+#             "scan_id": scan_id,
+#             "is_malicious": is_malicious,
+#             "confidence": confidence,
+#             "filename": filename
+#         })
+        
+#     except Exception as e:
+#         error_msg = str(e)
+#         print(f"ERROR in upload_file: {error_msg}")
+#         return jsonify({
+#             "error": "File processing failed",
+#             "details": error_msg
+#         }), 500
+        
+#     finally:
+#         if 'conn' in locals() and conn.is_connected():
+#             cursor.close()
+#             conn.close()
+# @app.route('/upload', methods=['POST'])
+# @jwt_required()
+# def upload_file():
+#     try:
+#         if 'file' not in request.files:
+#             return jsonify({"error": "No file part in request"}), 400
+
+#         file = request.files['file']
+#         if file.filename == '':
+#             return jsonify({"error": "No file selected"}), 400
+
+#         allowed_extensions = {'exe', 'dll', 'pdf', 'docx', 'zip'}
+#         if '.' not in file.filename:
+#             return jsonify({"error": "File has no extension"}), 400
+
+#         ext = file.filename.rsplit('.', 1)[1].lower()
+#         if ext not in allowed_extensions:
+#             return jsonify({"error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"}), 400
+
+#         filename = secure_filename(file.filename)
+#         upload_folder = app.config['UPLOAD_FOLDER']
+#         os.makedirs(upload_folder, exist_ok=True)
+#         filepath = os.path.join(upload_folder, filename)
+#         file.save(filepath)
+
+#         user_id = get_jwt_identity()
+
+#         # === Feature Extraction ===
+#         try:
+#             features = extract_features(filepath)  # shape: (1, N)
+#             features_scaled = scaler.transform(features)  # scale for RF
+#         except Exception as e:
+#             return jsonify({"error": "Feature extraction failed", "details": str(e)}), 500
+
+#         # === Prediction ===
+#         try:
+#             prob = rf_model.predict_proba(features_scaled)[0][1]  # Probability of malicious
+#             is_malicious = prob > 0.5
+#         except Exception as e:
+#             return jsonify({"error": "Model prediction failed", "details": str(e)}), 500
+
+#         # === Save to DB ===
+#         try:
+#             conn = get_db_connection()
+#             cursor = conn.cursor(dictionary=True)
+#             cursor.execute("""
+#                 INSERT INTO scans 
+#                 (user_id, filename, file_path, is_malicious, confidence, created_at)
+#                 VALUES (%s, %s, %s, %s, %s, NOW())
+#             """, (user_id, filename, filepath, is_malicious, float(prob)))
+#             conn.commit()
+#             scan_id = cursor.lastrowid
+#         except Exception as e:
+#             return jsonify({"error": "Database insert failed", "details": str(e)}), 500
+#         finally:
+#             if 'conn' in locals() and conn.is_connected():
+#                 cursor.close()
+#                 conn.close()
+
+#         return jsonify({
+#             "success": True,
+#             "scan_id": scan_id,
+#             "filename": filename,
+#             "is_malicious": is_malicious,
+#             "confidence": float(prob)
+#         })
+
+#     except Exception as e:
+#         import traceback
+#         return jsonify({
+#             "error": "File processing failed",
+#             "details": traceback.format_exc()
+#         }), 500
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        upload_folder = app.config['UPLOAD_FOLDER']
-        os.makedirs(upload_folder, exist_ok=True)
-        filepath = os.path.join(upload_folder, filename)
-        print(f"Saving file to {filepath}")
-        
-        # Save the file temporarily
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
-        # Get current user
-        user_id = get_jwt_identity()
-        print(f"User ID from token: {user_id}")
-        
-        # Process the file with your malware detection
-        is_malicious = False  # Default value
-        confidence = 0.0      # Default value
-        
-        # Add your actual malware detection logic here
-        if model is not None:
-            print("Running malware detection")
+
+        print("File saved to:", filepath)
+
+        try:
+            # Extract features from uploaded file
             features = extract_features(filepath)
-            print(f"Shape of features before model.predict: {features.shape}")
+            if features is None:
+                raise ValueError("extract_features() returned None")
 
-            # Use model.predict for both prediction and confidence in binary classification
-            raw_prediction = model.predict(features)[0]
+            # Apply the scaler
+            features_scaled = scaler.transform(features)
 
-            # Assuming raw_prediction is the probability for the positive class (malicious)
-            confidence = float(raw_prediction) # Ensure confidence is a float
-            is_malicious = bool(raw_prediction > 0.5) # Use a threshold of 0.5 for binary classification
+            # Predict probabilities and class
+            probs = rf_model.predict_proba(features_scaled)[0]
+            predicted_class = rf_model.predict(features_scaled)[0]
+            confidence = float(probs[1])  # Assuming class 1 = malicious
 
-            print(f"Malware detection results: Malicious={is_malicious}, Confidence={confidence}")
-        else:
-            print("Warning: ML model not loaded")
-        
-        # Save scan results to database
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            INSERT INTO scans 
-            (user_id, filename, file_path, is_malicious, confidence, created_at)
-            VALUES (%s, %s, %s, %s, %s, NOW())
-        """, (user_id, filename, filepath, is_malicious, confidence))
-        
-        conn.commit()
-        scan_id = cursor.lastrowid
-        print(f"Scan saved to database with ID: {scan_id}")
-        
-        return jsonify({
-            "success": True,
-            "scan_id": scan_id,
-            "is_malicious": is_malicious,
-            "confidence": confidence,
-            "filename": filename
-        })
-        
-    except Exception as e:
-        error_msg = str(e)
-        print(f"ERROR in upload_file: {error_msg}")
-        return jsonify({
-            "error": "File processing failed",
-            "details": error_msg
-        }), 500
-        
-    finally:
-        if 'conn' in locals() and conn.is_connected():
-            cursor.close()
+            # Save result to database
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+    "INSERT INTO scan_results (filename, result, confidence) VALUES (%s, %s, %s)",
+    (filename, str(predicted_class), float(confidence))
+)
+
+            conn.commit()
             conn.close()
+
+            return jsonify({
+                'filename': filename,
+                'malicious': bool(predicted_class),
+                'confidence': confidence
+            })
+
+        except Exception as e:
+            print("Error during scanning:", str(e))
+            return jsonify({'error': str(e)}), 500
+
+    return jsonify({'error': 'Invalid file type'}), 400
+
 
 @app.route('/scans', methods=['GET'])
 @jwt_required()
@@ -450,6 +565,69 @@ def your_malware_detection_function(filepath):
         return bool(prediction)
     return False
 
+
+# @app.route('/scan', methods=['POST'])
+# def scan_file():
+#     data = request.get_json()
+#     filepath = data.get('filepath')
+
+#     if not filepath or not os.path.isfile(filepath):
+#         return jsonify({'error': 'Invalid or missing file path'}), 400
+
+#     try:
+#         # Expect CSV with a single row of numeric features (no label)
+#         df = pd.read_csv(filepath)
+#         if 'label' in df.columns:
+#             df = df.drop(columns=['label'])
+
+#         # Scale features and reshape
+#         features = scaler.transform(df)
+#         lstm_input = features.reshape((1, 1, features.shape[1]))
+
+#         # Make predictions
+#         rf_pred = rf_model.predict(features)[0]
+#         lstm_pred = np.argmax(lstm_model.predict(lstm_input), axis=1)[0]
+
+#         return jsonify({
+#             'rf_prediction': label_map.get(rf_pred, str(rf_pred)),
+#             'lstm_prediction': label_map.get(lstm_pred, str(lstm_pred))
+#         })
+
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+# @app.route('/scan', methods=['POST'])
+# def scan_file():
+#     data = request.get_json()
+#     filepath = data.get('filepath')
+
+#     if not filepath or not os.path.isfile(filepath):
+#         return jsonify({'error': 'Invalid or missing file path'}), 400
+
+#     try:
+#         # Expect CSV with a single row of numeric features (no label)
+#         df = pd.read_csv(filepath)
+#         if 'label' in df.columns:
+#             df = df.drop(columns=['label'])
+
+#         # Scale features and reshape
+#         features = scaler.transform(df)
+#         lstm_input = features.reshape((1, 1, features.shape[1]))
+
+#         # Make predictions
+#         rf_pred = rf_model.predict(features)[0]
+#         lstm_pred = np.argmax(lstm_model.predict(lstm_input), axis=1)[0]
+
+#         return jsonify({
+#             'rf_prediction': label_map.get(rf_pred, str(rf_pred)),
+#             'lstm_prediction': label_map.get(lstm_pred, str(lstm_pred))
+#         })
+
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     app.run(debug=True, port=5000)
+
+

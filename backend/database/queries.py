@@ -119,4 +119,26 @@ def get_user_scans(user_id, limit=10):
         return cursor.fetchall()
     finally:
         cursor.close()
-        conn.close()        
+        conn.close()    
+
+def get_user_scan_results(user_id, limit=10):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT 
+                s.filename,
+                s.confidence,
+                s.is_malicious,
+                sr.result
+            FROM scans s
+            LEFT JOIN scan_results sr ON s.filename = sr.filename
+            WHERE s.user_id = %s
+            ORDER BY s.created_at DESC
+            LIMIT %s
+        """, (user_id, limit))
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+    
