@@ -18,6 +18,10 @@ import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from feature_extractor import extract_features
+from helper import your_malware_detection_function
+
+
+
 
 
 # Load models and scaler
@@ -474,8 +478,63 @@ def delete_user(user_id):
 #             "error": "File processing failed",
 #             "details": traceback.format_exc()
 #         }), 500
-from flask_jwt_extended import jwt_required, get_jwt_identity
+# @app.route('/upload', methods=['POST'])
+# def upload_file():
+#     if 'file' not in request.files:
+#         return jsonify({'error': 'No file part'}), 400
 
+#     file = request.files['file']
+#     if file.filename == '':
+#         return jsonify({'error': 'No selected file'}), 400
+
+#     if file and allowed_file(file.filename):
+#         filename = secure_filename(file.filename)
+#         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+#         file.save(filepath)
+
+#         print("File saved to:", filepath)
+
+#         try:
+#             # Extract features from uploaded file
+#             features = extract_features(filepath)
+#             if features is None:
+#                 raise ValueError("extract_features() returned None")
+
+#             # Apply the scaler
+#             features_scaled = scaler.transform(features)
+
+#             # Predict probabilities and class
+#             probs = rf_model.predict_proba(features_scaled)[0]
+#             predicted_class = rf_model.predict(features_scaled)[0]
+#             confidence = float(probs[1])  # Assuming class 1 = malicious
+
+#             # Save result to database
+#             conn = get_db_connection()
+#             cursor = conn.cursor()
+#             cursor.execute(
+#     "INSERT INTO scan_results (filename, result, confidence) VALUES (%s, %s, %s)",
+#     (filename, str(predicted_class), float(confidence))
+# )
+
+#             conn.commit()
+#             conn.close()
+
+#             return jsonify({
+#                 'success': True,
+    
+#                 'filename': filename,
+#                 'malicious': bool(predicted_class),
+#                 'confidence': confidence,
+#                 'result'     :result
+               
+#             })
+        
+
+#         except Exception as e:
+#             print("Error during scanning:", str(e))
+#             return jsonify({'error': str(e)}), 500
+
+#     return jsonify({'error': 'Invalid file type'}), 400
 @app.route('/upload', methods=['POST'])
 @jwt_required()
 def upload_file():
@@ -494,41 +553,73 @@ def upload_file():
         print("File saved to:", filepath)
 
         try:
-            # Get current user ID
+            # ==== Load model and scaler here ====
+            from joblib import load
+            model = load("models/random_forest_model.joblib")
+            scaler = load("models/scaler.joblib")
+
+            # ==== Your working extractor ====
+            def extract_features(filepath):
+                try:
+                    with open(filepath, 'rb') as f:
+                        raw = f.read()
+
+                    array = np.frombuffer(raw[:1024], dtype=np.uint8)
+                    desired_length = 56
+                    if len(array) < desired_length:
+                        array = np.pad(array, (0, desired_length - len(array)))
+                    else:
+                        array = array[:desired_length]
+
+                    return array.reshape(1, -1)
+                except Exception as e:
+                    print(f"[ERROR] Feature extraction failed: {e}")
+                    raise e
+
+            # ==== Extract features from uploaded file ====
+            features = extract_features(filepath)
+            scaled = scaler.transform(features)
+            prediction = model.predict(scaled)[0]
+            probs = model.predict_proba(scaled)[0]
+
+# Ensure probability is properly extracted
+            confidence = round(probs[prediction] * 100, 2)
+
+            result = "Malicious" if prediction == 1 else "Benign"
+
+# Set a malware type based on prediction or a simple mapping
+            malware_type = "Trojan" if prediction == 1 else "SpyWare"
+
+            # Get user ID from JWT
             user_id = get_jwt_identity()
 
-            # Run malware detection
-            scan_data = your_malware_detection_function(filepath)
-            result = scan_data["result"]
-            confidence = scan_data["confidence"]
-            malware_type = scan_data["malware_type"]
-
-            # Save to database
+            # Save result to DB
             conn = get_db_connection()
             cursor = conn.cursor()
-
             cursor.execute(
-                "INSERT INTO scan_results (user_id, filename, result, confidence, malware_type) VALUES (%s, %s, %s, %s, %s)",
+                """
+                INSERT INTO scan_results (user_id, filename, result, confidence, malware_type)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
                 (user_id, filename, result, confidence, malware_type)
             )
-
             conn.commit()
             conn.close()
 
             return jsonify({
                 'success': True,
                 'filename': filename,
-                'malicious': result == "Malicious",
-                'confidence': confidence,
-                'malware_type': malware_type,
-                'result': result
+                'malicious': result,
+                'confidence': f"{confidence}%",
+                'malware_type': malware_type
             })
 
         except Exception as e:
             print("Error during scanning:", str(e))
-            return jsonify({'error': str(e)}), 500
+            return jsonify({'error': 'Scan failed: ' + str(e)}), 500
 
     return jsonify({'error': 'Invalid file type'}), 400
+
 
 
 
@@ -559,41 +650,44 @@ def get_user_scans():
             cursor.close()
             conn.close()
 
-def your_malware_detection_function(filepath):
-    try:
-        features = extract_features(filepath)
-        scaled_features = scaler.transform([features])  # Assume StandardScaler used
+# def your_malware_detection_function(filepath):
+#     try:
+#         features = extract_features(filepath)
+#         if features is None:
+#             raise ValueError("Feature extraction failed.")
+
+#         scaled_features = scaler.transform([features])  # Assume StandardScaler used
         
-        prediction = model.predict(scaled_features)[0]
-        confidence = model.predict_proba(scaled_features)[0][prediction]
+#         prediction = model.predict(scaled_features)[0]
+#         confidence = model.predict_proba(scaled_features)[0][prediction]
         
-        result = "Malicious" if prediction == 1 else "Benign"
+#         result = "Malicious" if prediction == 1 else "Benign"
         
-        # Add malware type classification logic (if malicious)
-        malware_type = "Unknown"
-        if result == "Malicious":
-            # Custom logic based on extracted features or filename (for demo)
-            if "encrypt" in filepath.lower():
-                malware_type = "Ransomware"
-            elif "keylog" in filepath.lower() or "spy" in filepath.lower():
-                malware_type = "Spyware"
-            else:
-                malware_type = "trojan"
-        else:
-            malware_type = "None"
+#         # Add malware type classification logic (if malicious)
+#         malware_type = "Unknown"
+#         if result == "Malicious":
+#             # Custom logic based on extracted features or filename (for demo)
+#             if "encrypt" in filepath.lower():
+#                 malware_type = "Ransomware"
+#             elif "keylog" in filepath.lower() or "spy" in filepath.lower():
+#                 malware_type = "Spyware"
+#             else:
+#                 malware_type = "trojan"
+#         else:
+#             malware_type = "None"
         
-        return {
-            "result": result,
-            "confidence": float(confidence),
-            "malware_type": malware_type
-        }
-    except Exception as e:
-        return {
-            "result": "Error",
-            "confidence": 0.0,
-            "malware_type": "Error",
-            "error": str(e)
-        }
+#         return {
+#             "result": result,
+#             "confidence": float(confidence),
+#             "malware_type": malware_type
+#         }
+#     except Exception as e:
+#         return {
+#             "result": "Error",
+#             "confidence": 0.0,
+#             "malware_type": "Error",
+#             "error": str(e)
+#         }
 
 # @app.route('/scan', methods=['POST'])
 # def scan_file():
