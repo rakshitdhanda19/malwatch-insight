@@ -474,7 +474,10 @@ def delete_user(user_id):
 #             "error": "File processing failed",
 #             "details": traceback.format_exc()
 #         }), 500
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
 @app.route('/upload', methods=['POST'])
+@jwt_required()
 def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -491,34 +494,34 @@ def upload_file():
         print("File saved to:", filepath)
 
         try:
-            # Extract features from uploaded file
-            features = extract_features(filepath)
-            if features is None:
-                raise ValueError("extract_features() returned None")
+            # Get current user ID
+            user_id = get_jwt_identity()
 
-            # Apply the scaler
-            features_scaled = scaler.transform(features)
+            # Run malware detection
+            scan_data = your_malware_detection_function(filepath)
+            result = scan_data["result"]
+            confidence = scan_data["confidence"]
+            malware_type = scan_data["malware_type"]
 
-            # Predict probabilities and class
-            probs = rf_model.predict_proba(features_scaled)[0]
-            predicted_class = rf_model.predict(features_scaled)[0]
-            confidence = float(probs[1])  # Assuming class 1 = malicious
-
-            # Save result to database
+            # Save to database
             conn = get_db_connection()
             cursor = conn.cursor()
+
             cursor.execute(
-    "INSERT INTO scan_results (filename, result, confidence) VALUES (%s, %s, %s)",
-    (filename, str(predicted_class), float(confidence))
-)
+                "INSERT INTO scan_results (user_id, filename, result, confidence, malware_type) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, filename, result, confidence, malware_type)
+            )
 
             conn.commit()
             conn.close()
 
             return jsonify({
+                'success': True,
                 'filename': filename,
-                'malicious': bool(predicted_class),
-                'confidence': confidence
+                'malicious': result == "Malicious",
+                'confidence': confidence,
+                'malware_type': malware_type,
+                'result': result
             })
 
         except Exception as e:
@@ -528,11 +531,11 @@ def upload_file():
     return jsonify({'error': 'Invalid file type'}), 400
 
 
+
 @app.route('/scans', methods=['GET'])
 @jwt_required()
 def get_user_scans():
     try:
-        # get_jwt_identity() now returns just the user ID string
         user_id = get_jwt_identity()
         
         if not user_id:
@@ -540,9 +543,10 @@ def get_user_scans():
             
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+        
         cursor.execute("""
-            SELECT id, filename, is_malicious, confidence, created_at
-            FROM scans 
+            SELECT id, filename, result AS is_malicious, confidence, malware_type, created_at
+            FROM scan_results 
             WHERE user_id = %s 
             ORDER BY created_at DESC
         """, (user_id,))
@@ -555,16 +559,41 @@ def get_user_scans():
             cursor.close()
             conn.close()
 
-# Helper function for malware detection (placeholder)
 def your_malware_detection_function(filepath):
-    # Placeholder for your malware detection logic
-    # In a real implementation, this would use the model to predict
-    if model is not None:
+    try:
         features = extract_features(filepath)
-        prediction = model.predict(features)[0]
-        return bool(prediction)
-    return False
-
+        scaled_features = scaler.transform([features])  # Assume StandardScaler used
+        
+        prediction = model.predict(scaled_features)[0]
+        confidence = model.predict_proba(scaled_features)[0][prediction]
+        
+        result = "Malicious" if prediction == 1 else "Benign"
+        
+        # Add malware type classification logic (if malicious)
+        malware_type = "Unknown"
+        if result == "Malicious":
+            # Custom logic based on extracted features or filename (for demo)
+            if "encrypt" in filepath.lower():
+                malware_type = "Ransomware"
+            elif "keylog" in filepath.lower() or "spy" in filepath.lower():
+                malware_type = "Spyware"
+            else:
+                malware_type = "trojan"
+        else:
+            malware_type = "None"
+        
+        return {
+            "result": result,
+            "confidence": float(confidence),
+            "malware_type": malware_type
+        }
+    except Exception as e:
+        return {
+            "result": "Error",
+            "confidence": 0.0,
+            "malware_type": "Error",
+            "error": str(e)
+        }
 
 # @app.route('/scan', methods=['POST'])
 # def scan_file():

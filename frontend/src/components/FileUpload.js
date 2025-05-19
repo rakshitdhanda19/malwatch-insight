@@ -8,47 +8,74 @@ function FileUpload() {
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file) return;
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   if (!file) return;
 
-    setIsLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
+  //   setIsLoading(true);
+  //   const formData = new FormData();
+  //   formData.append('file', file);
 
-    try {
-      const response = await axios.post(
-        'http://localhost:5000/upload',
-        formData,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
+  //   try {
+  //     const response = await axios.post(
+  //       'http://localhost:5000/upload',
+  //       formData,
+  //       {
+  //         headers: {
+  //           'Authorization': `Bearer ${localStorage.getItem('token')}`,
+  //           'Content-Type': 'multipart/form-data'
+  //         }
+  //       }
+  //     );
       
-      // Save scan result to database
-      await axios.post(
-        'http://localhost:5000/scans',
-        {
-          filename: file.name,
-          is_malicious: response.data.is_malicious
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+  //     // Save scan result to database
+  //     await axios.post(
+  //       'http://localhost:5000/scans',
+  //       {
+  //         filename: file.name,
+  //         is_malicious: response.data.is_malicious
+  //       },
+  //       {
+  //         headers: {
+  //           'Authorization': `Bearer ${localStorage.getItem('token')}`
+  //         }
+  //       }
+  //     );
 
-      setResult(response.data);
-    } catch (error) {
-      console.error('Upload failed:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //     setResult(response.data);
+  //   } catch (error) {
+  //     console.error('Upload failed:', error);
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!file) return;
+
+  setIsLoading(true);
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post(
+      'http://localhost:5000/upload',
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    setResult(response.data);
+  } catch (error) {
+    console.error('Upload failed:', error.response?.data || error.message);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="file-upload">

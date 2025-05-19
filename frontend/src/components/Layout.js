@@ -93,43 +93,89 @@ const fetchScans = async () => {
 
   // Handle file upload
   const handleFileUpload = async (e) => {
-    e.preventDefault();
-    
-    if (!file) {
-      setError('Please select a file first');
-      return;
-    }
-  
-    setUploading(true);
-    setError('');
-  
-    const formData = new FormData();
-    formData.append('file', file);
-  
-    try {
-      const response = await axios.post('/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-  
-      if (response.data.success) {
-        await fetchScans(); // Refresh the scan list
-        navigate(`/scan-result/${response.data.scan_id}`);
-      } else {
-        throw new Error(response.data.error || 'Upload failed');
+  e.preventDefault();
+
+  if (!file) {
+    setError('Please select a file first');
+    return;
+  }
+
+  setUploading(true);
+  setError('');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
-    } catch (err) {
-      console.error('Upload error:', err);
-      setError(err.response?.data?.error || 
-               err.response?.data?.details || 
-               err.message || 
-               'File upload failed');
-    } finally {
-      setUploading(false);
+    });
+
+   if (!response.data || response.data.error) {
+  throw new Error(response.data?.error || 'Upload failed');
+}
+
+    // Separate try-catch for fetchScans
+    try {
+      await fetchScans();
+    } catch (fetchError) {
+      console.error('Failed to fetch scans:', fetchError);
+      setError('Scan list update failed after upload');
     }
-  };
+
+    navigate(`/scan-result/${response.data.scan_id}`);
+  } catch (err) {
+    console.error('Upload process error:', err);
+    setError(err.response?.data?.error ||
+             err.response?.data?.details ||
+             err.message ||
+             'File upload failed');
+  } finally {
+    setUploading(false);
+  }
+};
+
+  // const handleFileUpload = async (e) => {
+  //   e.preventDefault();
+    
+  //   if (!file) {
+  //     setError('Please select a file first');
+  //     return;
+  //   }
+  
+  //   setUploading(true);
+  //   setError('');
+  
+  //   const formData = new FormData();
+  //   formData.append('file', file);
+  
+  //   try {
+  //     const response = await axios.post('/upload', formData, {
+  //       headers: {
+  //         'Content-Type': 'multipart/form-data',
+  //         'Authorization': `Bearer ${localStorage.getItem('token')}`
+  //       }
+  //     });
+  
+  //     if (response.data.success) {
+  //       await fetchScans(); // Refresh the scan list
+  //       navigate(`/scan-result/${response.data.scan_id}`);
+  //     } else {
+  //       throw new Error(response.data.error || 'sacns Upload failed');
+  //     }
+  //   } catch (err) {
+  //     console.error('Upload error:', err);
+  //     setError(err.response?.data?.error || 
+  //              err.response?.data?.details || 
+  //              err.message || 
+  //              'File upload failed');
+  //   } finally {
+  //     setUploading(false);
+  //   }
+  // };
 
   // Initial data load
   useEffect(() => {
@@ -244,44 +290,53 @@ const fetchScans = async () => {
             ) : (
               <TableContainer component={Paper}>
                 <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Filename</TableCell>
-                      <TableCell>Result</TableCell>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {scans.map((scan) => (
-                      <TableRow key={scan.id}>
-                        <TableCell>{scan.filename}</TableCell>
-                        <TableCell>
-                          <Box
-                            component="span"
-                            sx={{
-                              color: scan.is_malicious ? 'error.main' : 'success.main',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            {scan.is_malicious ? 'Malicious' : 'Clean'}
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(scan.created_at).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="small"
-                            onClick={() => navigate(`/scan-result/${scan.id}`)}
-                            startIcon={<History />}
-                          >
-                            Details
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
+                 <TableHead>
+  <TableRow>
+    <TableCell>Filename</TableCell>
+    <TableCell>Result</TableCell>
+    <TableCell>Malware Type</TableCell>
+    <TableCell>Prediction</TableCell>
+    <TableCell>Date</TableCell>
+    <TableCell>Actions</TableCell>
+  </TableRow>
+</TableHead>
+                 <TableBody>
+  {scans.map((scan) => (
+    <TableRow key={scan.id}>
+      <TableCell>{scan.filename}</TableCell>
+      <TableCell>
+        <Box
+          component="span"
+          sx={{
+            color: scan.is_malicious ? 'error.main' : 'success.main',
+            fontWeight: 'bold'
+          }}
+        >
+          {scan.is_malicious ? 'Malicious' : 'Clean'}
+        </Box>
+      </TableCell>
+      <TableCell>{scan.malware_type || 'N/A'}</TableCell>
+      <TableCell>
+        {typeof scan.confidence === 'number'
+          ? `${(scan.confidence * 100).toFixed(1)}%`
+          : 'N/A'}
+      </TableCell>
+      <TableCell>
+        {new Date(scan.created_at).toLocaleString()}
+      </TableCell>
+      <TableCell>
+        <Button
+          size="small"
+          onClick={() => navigate(`/scan-result/${scan.id}`)}
+          startIcon={<History />}
+        >
+          Details
+        </Button>
+      </TableCell>
+    </TableRow>
+  ))}
+</TableBody>
+
                 </Table>
               </TableContainer>
             )}

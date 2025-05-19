@@ -17,14 +17,13 @@ function RecentScans({ scans }) {
           </tr>
         </thead>
         <tbody>
-          {scans.map((scan) => (
-            <tr key={scan.id}>
-              <td>{scan.filename}</td>
-              <td>{scan.file_type}</td>
-              <td>{scan.is_malicious ? 'Yes' : 'No'}</td>
-              <td>{scan.confidence}</td>
-              <td>{new Date(scan.created_at).toLocaleString()}</td>
-            </tr>
+         {scanHistory.map(scan => (
+  <tr key={scan.id}>
+    <td>{scan.filename}</td>
+    <td>{scan.is_malicious === "1" ? "Malicious" : "Benign"}</td>
+    <td>{(scan.confidence * 100).toFixed(2)}%</td>
+    <td>{new Date(scan.created_at).toLocaleString()}</td>
+  </tr>
           ))}
         </tbody>
       </table>
