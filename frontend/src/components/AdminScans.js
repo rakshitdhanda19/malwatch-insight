@@ -21,21 +21,21 @@ function AdminScans() {
           <tr>
             <th>Username</th>
             <th>Filename</th>
-            <th>File Type</th>
+            <th>Malware Type</th>
             <th>Malicious</th>
             <th>Confidence</th>
             <th>Date</th>
           </tr>
         </thead>
         <tbody>
-          {scans.map((scan) => (
+          {scans.map((scan_results) => (
             <tr key={scan.id}>
-              <td>{scan.username}</td>
-              <td>{scan.filename}</td>
-              <td>{scan.file_type}</td>
-              <td>{scan.is_malicious ? 'Yes' : 'No'}</td>
-              <td>{scan.confidence}</td>
-              <td>{new Date(scan.created_at).toLocaleString()}</td>
+              <td>{scan_results.username}</td>
+              <td>{scan_results.filename}</td>
+              <td>{scan_results.malware_type}</td>
+              <td>{scan_results.is_malicious ? 'Yes' : 'No'}</td>
+              <td>{scan_results.confidence}</td>
+              <td>{new Date(scan_results.created_at).toLocaleString()}</td>
             </tr>
           ))}
         </tbody>

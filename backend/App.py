@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 import joblib
 import numpy as np
+import pandas as pd
 import hashlib
 import pefile
 from functools import wraps
@@ -18,7 +19,8 @@ import numpy as np
 from tensorflow.keras.models import load_model
 import tensorflow as tf
 from feature_extractor import extract_features
-from helper import your_malware_detection_function
+from werkzeug.utils import secure_filename
+
 
 
 
@@ -100,6 +102,7 @@ def home():
     return jsonify({"status": "MalWatch Insight Backend Running!"})
 
 @app.route('/register', methods=['POST'])
+
 def register():
     data = request.json
     required_fields = ['username', 'email', 'password']
@@ -130,6 +133,7 @@ def register():
             conn.close()
 
 @app.route('/login', methods=['POST'])
+
 def login():
     try:
         data = request.get_json()
@@ -230,18 +234,14 @@ def get_all_users():
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
-
 @app.route('/admin/scans', methods=['GET'])
 @jwt_required()
 def get_all_scans():
     try:
-        # Get user ID
+        # Get user ID and admin status from JWT
         user_id = get_jwt_identity()
-        
-        # Get claims which include is_admin status
         claims = get_jwt()
         
-        # Debug logging
         app.logger.info(f"User accessing /admin/scans: {user_id}, claims: {claims}")
         
         if not claims.get('is_admin'):
@@ -251,10 +251,10 @@ def get_all_scans():
         cursor = conn.cursor(dictionary=True)
         
         cursor.execute("""
-            SELECT scans.*, users.username 
-            FROM scans
-            JOIN users ON scans.user_id = users.id
-            ORDER BY scans.created_at DESC
+            SELECT scan_results.*, users.username 
+            FROM scan_results
+            JOIN users ON scan_results.user_id = users.id
+            ORDER BY scan_results.created_at DESC
         """)
         
         scans = cursor.fetchall()
@@ -267,6 +267,7 @@ def get_all_scans():
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
             conn.close()
+
 
 @app.route('/admin/users/<int:user_id>', methods=['DELETE'])
 @jwt_required()
@@ -619,7 +620,62 @@ def upload_file():
             return jsonify({'error': 'Scan failed: ' + str(e)}), 500
 
     return jsonify({'error': 'Invalid file type'}), 400
+# def allowed_file(filename):
+#     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# def extract_features_from_binary(filepath):
+#     # Dummy feature extractor for binary files - replace with real one
+#     # For now we simulate 56 numerical features
+#     return np.random.rand(1, 56)  # Make sure 56 matches training feature count
+
+# def upload():
+#     if 'file' not in request.files:
+#         return jsonify({'error': 'No file part'}), 400
+
+#     file = request.files['file']
+#     if file.filename == '':
+#         return jsonify({'error': 'No selected file'}), 400
+
+#     if file and allowed_file(file.filename):
+#         filename = secure_filename(file.filename)
+#         filepath = os.path.join('uploads', filename)
+#         file.save(filepath)
+
+#         file_ext = filename.rsplit('.', 1)[1].lower()
+
+#         try:
+#             if file_ext == 'csv':
+#                 try:
+#                     df = pd.read_csv(filepath, encoding='utf-8')
+#                 except UnicodeDecodeError:
+#                     df = pd.read_csv(filepath, encoding='ISO-8859-1')
+
+#                 numeric_features = df.select_dtypes(include=[np.number])
+#                 if numeric_features.shape[1] != 56:
+#                     return jsonify({'error': f'Expected 56 features, got {numeric_features.shape[1]}'}), 400
+#                 features = scaler.transform(numeric_features)
+#             else:
+#                 features = extract_features_from_binary(filepath)
+#                 features = scaler.transform(features)
+
+#             # Predict using RF
+#             rf_pred = rf_model.predict(features)[0]
+
+#             # Predict using LSTM (requires reshaped input)
+#             lstm_input = features.reshape((1, 1, features.shape[1]))
+#             lstm_pred_probs = lstm_model.predict(lstm_input)
+#             lstm_pred = np.argmax(lstm_pred_probs, axis=1)[0]
+
+#             return jsonify({
+#                 'RandomForestPrediction': str(rf_pred),
+#                 'LSTMPrediction': str(lstm_pred),
+#                 'Malicious': str(rf_pred).lower() != 'benign' or str(lstm_pred).lower() != 'benign'
+#             })
+
+#         except Exception as e:
+#             return jsonify({'error': f'Scan failed: {str(e)}'}), 500
+#     else:
+#         return jsonify({'error': 'File type not allowed'}), 400
 
 
 
